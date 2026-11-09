@@ -220,3 +220,39 @@ input::placeholder { opacity: 0.35; }
 .rules summary { cursor: pointer; display: inline-block; text-decoration: underline wavy; text-underline-offset: 4px; }
 .rules ul { text-align: left; padding-left: 1.2em; margin: 10px 0 0; }
 .rules li { margin-bottom: 4px; }
+
+/* startscherm */
+.home { min-height: 100vh; }
+.home-links { display: flex; flex-direction: column; align-items: center; gap: 34px; }
+
+.big-link {
+  font: inherit;
+  font-size: clamp(2.2rem, 8vw, 3.8rem);
+  line-height: 1.1;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 2px 6px;
+  text-decoration: none;
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+.big-link::after {
+  content: '';
+  position: absolute;
+  left: -3%;
+  right: -3%;
+  bottom: -8px;
+  height: 10px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 8' preserveAspectRatio='none'%3E%3Cpath d='M2 5 C30 1 60 7 100 4 S170 2 198 5' fill='none' stroke='%23161616' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.35s cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+.big-link:hover, .big-link:focus-visible { box-shadow: none; transform: translateY(-2px); outline: none; }
+.big-link:hover::after, .big-link:focus-visible::after { transform: scaleX(1); }
+.big-link:active { transform: translateY(0); }

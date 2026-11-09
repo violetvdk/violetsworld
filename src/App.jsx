@@ -17,6 +17,7 @@ const opposite = (c) => (c === 'w' ? 'b' : 'w')
 export default function App() {
   const [session, setSession] = useState(null) // { mode, myColor, level, net }
   const [opponentLeft, setOpponentLeft] = useState(false)
+  const [page, setPage] = useState('home') // home | chess
 
   // Berichten van de online tegenstander worden hier gebufferd tot het spel klaar staat.
   const incoming = useRef({ fn: null, queue: [] })
@@ -51,10 +52,16 @@ export default function App() {
   }
 
   if (!session) {
+    if (page === 'home') return <Home onChess={() => setPage('chess')} />
     return (
       <>
         <SketchDefs />
-        <Menu onStart={start} incomingApi={incomingApi} onLeft={() => setOpponentLeft(true)} />
+        <Menu
+          onStart={start}
+          incomingApi={incomingApi}
+          onLeft={() => setOpponentLeft(true)}
+          onBack={() => setPage('home')}
+        />
       </>
     )
   }
@@ -72,9 +79,31 @@ export default function App() {
   )
 }
 
+/* ---------------------------------------------------------------- startscherm */
+
+function Home({ onChess }) {
+  return (
+    <div className="app home">
+      <nav className="home-links">
+        <a
+          className="big-link"
+          href="https://soundcloud.com/violetvdk"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Violet's Music
+        </a>
+        <button className="big-link" onClick={onChess}>
+          Chess with walls
+        </button>
+      </nav>
+    </div>
+  )
+}
+
 /* ---------------------------------------------------------------- menu */
 
-function Menu({ onStart, incomingApi, onLeft }) {
+function Menu({ onStart, incomingApi, onLeft, onBack }) {
   const [level, setLevel] = useState('normal')
   const [color, setColor] = useState('w')
   const [lobby, setLobby] = useState(null) // null | { kind: 'host'|'join', code, error, busy }
@@ -205,6 +234,10 @@ function Menu({ onStart, incomingApi, onLeft }) {
         </section>
       </div>
 
+      <div className="actions">
+        <button onClick={onBack}>Terug</button>
+      </div>
+
       <Rules />
     </div>
   )
@@ -305,19 +338,19 @@ function Game({ mode, myColor, level, net, incomingApi, opponentLeft, onExit }) 
     const w = game.winner
     message = `Koning ingebouwd! ${mode === 'local' ? `${NAME[w]} wint` : me(w) ? 'Jij wint' : `${who(w)} wint`}.`
   } else if (game.status === 'stalemate') {
-    message = 'Pat — remise.'
+    message = 'Pat, dus remise.'
   } else if (game.status === 'draw') {
-    message = `Remise: ${game.reason.charAt(0).toLowerCase()}${game.reason.slice(1)}.`
+    message = `Remise. ${game.reason}.`
   } else if (wallPhase) {
     const c = game.pendingWall
     message = me(c) || mode === 'local'
-      ? `${who(c)} verloor een stuk: kies een leeg vakje voor een muur${checked ? ' (je staat schaak, een muur kan je redden)' : ''}.`
-      : `${who(c)} mag een muur plaatsen…`
+      ? `${who(c)} verloor een stuk, zet een muur op een leeg vakje${checked ? '. Je staat schaak, een muur kan je redden' : ''}.`
+      : `${who(c)} zet een muur`
   } else if (mode === 'ai' && game.turn !== myColor) {
-    message = 'De computer denkt na…'
+    message = 'De computer denkt na'
   } else {
     const c = game.turn
-    message = `${who(c)} ${me(c) ? 'bent' : 'is'} aan zet${checked ? ' — schaak!' : ''}`
+    message = `${who(c)} ${me(c) ? 'bent' : 'is'} aan zet${checked ? ', schaak!' : ''}`
   }
 
   const order = useMemo(() => {
@@ -399,13 +432,11 @@ function Rules() {
     <details className="rules">
       <summary>Regels</summary>
       <ul>
-        <li>Normaal schaken (rochade, en passant en promotie naar dame inbegrepen).</li>
-        <li>Wordt jouw stuk geslagen, dan mag jij vóór je zet één muur plaatsen op een leeg vakje (of overslaan).</li>
-        <li>Op een muur kan niemand staan. Lopers, torens en dames kunnen er niet doorheen; paarden springen eroverheen.</li>
-        <li>Alleen paarden kunnen een muur breken: een paard dat op een muur springt, haalt de muur weg (dit geeft geen nieuwe muur).</li>
-        <li>Muren blijven permanent staan en kunnen ook een schaak blokkeren.</li>
-        <li>Bouw je de koning van je tegenstander helemaal in (alle vakjes eromheen zijn muur of rand), dan win je direct. Pas op dat je je eigen koning niet inbouwt.</li>
-        <li>Elke beurt wordt gecontroleerd of winst nog mogelijk is; zo niet (bijv. te weinig materiaal, stukken vastgemetseld, herhaling, 50 zetten) is het remise.</li>
+        <li>Het is gewoon schaken.</li>
+        <li>Pakt iemand een stuk van jou, dan mag jij daarna een muur neerzetten op een leeg vakje. Mag ook niks doen.</li>
+        <li>Op een muur kan niemand staan. Alleen paarden kunnen erop springen, dan is de muur weg.</li>
+        <li>Zet je de koning van de ander helemaal vast met muren, dan win je. Doe je dat bij je eigen koning, dan verlies je.</li>
+        <li>Kan niemand meer winnen, dan is het remise.</li>
       </ul>
     </details>
   )

@@ -168,7 +168,7 @@ ok(perft(fromFen('8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - -'), 4) === 43238, 'perft 
   for (let i = 0; i < 2; i++) {
     r = play(r, 'e1', 'e2'); r = play(r, 'e8', 'e7'); r = play(r, 'e2', 'e1'); r = play(r, 'e7', 'e8')
   }
-  ok(r.status === 'draw' && /derde/.test(r.reason), 'driemaal dezelfde stelling = remise')
+  ok(r.status === 'draw' && /Drie keer/.test(r.reason), 'driemaal dezelfde stelling = remise')
 
   // 50-zettenregel
   const f = fromFen('r3k3/8/8/8/8/8/8/R3K3 w - -')

@@ -492,10 +492,10 @@ function evaluate(state, fast = false) {
     return { ...s, status: 'stalemate', winner: null, reason: 'Pat' }
   }
   const draw = (reason) => ({ ...s, status: 'draw', winner: null, reason })
-  if (insufficientMaterial(s)) return draw('Onvoldoende materiaal om mat te zetten')
-  if (isDeadPosition(s)) return draw('Niemand kan nog mat zetten (door de muren)')
+  if (insufficientMaterial(s)) return draw('Te weinig stukken om mat te zetten')
+  if (isDeadPosition(s)) return draw('Niemand kan nog winnen')
   if (s.halfmove >= 100) return draw('50 zetten zonder slag of pionzet')
-  if (seenCount >= 3) return draw('Dezelfde stelling voor de derde keer')
+  if (seenCount >= 3) return draw('Drie keer dezelfde stelling')
   return { ...s, status: 'playing', winner: null, reason: null }
 }
 
