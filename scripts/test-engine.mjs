@@ -1,7 +1,7 @@
 // Draai met: npm test
 import {
   newGame, allLegalMoves, makeMove, skipWall, placeWall, applyAction,
-  legalMoves, inCheck, isDeadPosition, positionKey,
+  legalMoves, inCheck, isDeadPosition, positionKey, kingEnclosed,
 } from '../src/chess.js'
 import { chooseAction } from '../src/ai.js'
 
@@ -67,7 +67,26 @@ ok(perft(fromFen('8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - -'), 4) === 43238, 'perft 
   s.walls[sq('b3')] = true
   s.walls[sq('c3')] = true
   const kn = legalMoves(s, sq('b1')).map((m) => m.to)
-  ok(kn.includes(sq('d2')) && kn.includes(sq('a3')) && !kn.includes(sq('c3')), 'paard springt over muur, niet erop')
+  ok(kn.includes(sq('d2')) && kn.includes(sq('a3')), 'paard springt over een muur heen')
+  const brk = legalMoves(s, sq('b1')).find((m) => m.to === sq('c3'))
+  ok(brk && brk.breakWall, 'paard kan een muur breken')
+  const after = makeMove(s, brk)
+  ok(!after.walls[sq('c3')] && after.board[sq('c3')]?.t === 'n' && !after.pendingWall && after.turn === 'b', 'muur weg, paard staat erop, geen nieuwe muur')
+  ok(after.walls[sq('b3')], 'andere muren blijven staan')
+  // andere stukken kunnen geen muur breken
+  const rook = fromFen('4k3/8/8/8/8/8/8/R3K3 w - -')
+  rook.walls[sq('a3')] = true
+  ok(!legalMoves(rook, sq('a1')).some((m) => m.to === sq('a3') || m.to === sq('a4')), 'toren kan geen muur breken')
+  const king = fromFen('4k3/8/8/8/8/8/8/4K3 w - -')
+  king.walls[sq('e2')] = true
+  ok(!legalMoves(king, sq('e1')).some((m) => m.to === sq('e2')), 'koning kan geen muur breken')
+  const bish = fromFen('4k3/8/8/8/8/8/8/2B1K3 w - -')
+  bish.walls[sq('d2')] = true
+  ok(!legalMoves(bish, sq('c1')).some((m) => m.to === sq('d2')), 'loper kan geen muur breken')
+  // met een paard erbij is een ingemetselde stelling niet dood
+  const knightAlive = fromFen('7k/8/8/8/8/8/8/R3K1N1 w - -')
+  for (const n of ['a2', 'b2', 'b1']) knightAlive.walls[sq(n)] = true
+  ok(!isDeadPosition(knightAlive), 'met een paard kunnen muren verdwijnen: niet dood')
   // pion kan niet de muur in
   s = fromFen('4k3/8/8/8/8/8/4P3/4K3 w - -')
   s.walls[sq('e3')] = true
@@ -162,6 +181,30 @@ ok(perft(fromFen('8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - -'), 4) === 43238, 'perft 
   p.pendingWall = 'b'
   const st = skipWall(p)
   ok(st.status === 'stalemate', 'pat wordt herkend')
+}
+
+// ---- koning inbouwen
+{
+  // zwarte koning in de hoek h8: muren op g8, g7, h7 bouwen hem in
+  let s = fromFen('7k/8/8/8/8/8/8/4K2R w - -')
+  s.walls[sq('g8')] = true
+  s.walls[sq('g7')] = true
+  ok(!kingEnclosed(s, 'b'), 'nog niet ingebouwd met 2 muren')
+  s.pendingWall = 'w'
+  const done = applyAction(s, { type: 'wall', sq: sq('h7') })
+  ok(done.status === 'enclosed' && done.winner === 'w', 'vijandelijke koning ingebouwd = die speler wint')
+  // jezelf inbouwen = verliezen
+  let t2 = fromFen('7k/8/8/8/8/8/8/4K2R b - -')
+  t2.walls[sq('g8')] = true
+  t2.walls[sq('g7')] = true
+  t2.pendingWall = 'b'
+  const self = applyAction(t2, { type: 'wall', sq: sq('h7') })
+  ok(self.status === 'enclosed' && self.winner === 'w', 'eigen koning inbouwen = verliezen')
+  // computer maakt de laatste muur om te winnen en vermijdt zelf-inbouwen
+  const a = chooseAction(s, 'normal')
+  ok(a.type === 'wall' && a.sq === sq('h7'), 'computer bouwt de vijandelijke koning in om te winnen')
+  const b = chooseAction(t2, 'hard')
+  ok(!(b.type === 'wall' && b.sq === sq('h7')), 'computer bouwt zijn eigen koning niet in')
 }
 
 // ---- computer: alleen legale acties, plaatst muren, redt zichzelf van mat

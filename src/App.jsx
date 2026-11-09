@@ -301,6 +301,9 @@ function Game({ mode, myColor, level, net, incomingApi, opponentLeft, onExit }) 
   } else if (game.status === 'checkmate') {
     const w = game.winner
     message = `Schaakmat! ${mode === 'local' ? `${NAME[w]} wint` : me(w) ? 'Jij wint' : `${who(w)} wint`}.`
+  } else if (game.status === 'enclosed') {
+    const w = game.winner
+    message = `Koning ingebouwd! ${mode === 'local' ? `${NAME[w]} wint` : me(w) ? 'Jij wint' : `${who(w)} wint`}.`
   } else if (game.status === 'stalemate') {
     message = 'Pat — remise.'
   } else if (game.status === 'draw') {
@@ -359,7 +362,7 @@ function Game({ mode, myColor, level, net, incomingApi, opponentLeft, onExit }) 
               {vr === 7 && <span className="coord file">{squareName(i)[0]}</span>}
               {game.walls[i] && <Wall seed={i} />}
               {piece && <Piece type={piece.t} color={piece.c} seed={i} />}
-              {m && <div className={m.capture ? 'hint-capture' : 'hint'} />}
+              {m && <div className={m.capture || m.breakWall ? 'hint-capture' : 'hint'} />}
             </div>
           )
         })}
@@ -399,7 +402,10 @@ function Rules() {
         <li>Normaal schaken (rochade, en passant en promotie naar dame inbegrepen).</li>
         <li>Wordt jouw stuk geslagen, dan mag jij vóór je zet één muur plaatsen op een leeg vakje (of overslaan).</li>
         <li>Op een muur kan niemand staan. Lopers, torens en dames kunnen er niet doorheen; paarden springen eroverheen.</li>
+        <li>Alleen paarden kunnen een muur breken: een paard dat op een muur springt, haalt de muur weg (dit geeft geen nieuwe muur).</li>
         <li>Muren blijven permanent staan en kunnen ook een schaak blokkeren.</li>
+        <li>Bouw je de koning van je tegenstander helemaal in (alle vakjes eromheen zijn muur of rand), dan win je direct. Pas op dat je je eigen koning niet inbouwt.</li>
+        <li>Elke beurt wordt gecontroleerd of winst nog mogelijk is; zo niet (bijv. te weinig materiaal, stukken vastgemetseld, herhaling, 50 zetten) is het remise.</li>
       </ul>
     </details>
   )

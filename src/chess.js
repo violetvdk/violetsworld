@@ -2,7 +2,7 @@
 // Bord: array van 64 vakjes, index = rij * 8 + kolom, rij 0 = bovenaan (rank 8).
 // Stuk: { t: 'p'|'n'|'b'|'r'|'q'|'k', c: 'w'|'b' }
 // Muren: boolean-array van 64. Op een muur kan niemand staan of lopen;
-// lopers/torens/dame kunnen er niet doorheen, paarden springen er wel overheen.
+// lopers/torens/dame kunnen er niet doorheen, paarden springen er overheen en kunnen een muur breken.
 
 const row = (i) => i >> 3
 const col = (i) => i & 7
@@ -30,7 +30,7 @@ export function newGame() {
     castling: { wK: true, wQ: true, bK: true, bQ: true },
     ep: null, // vakje waar en passant geslagen kan worden
     pendingWall: null, // kleur die nog een muur mag plaatsen
-    status: 'playing', // playing | checkmate | stalemate | draw
+    status: 'playing', // playing | checkmate | enclosed | stalemate | draw
     reason: null, // uitleg bij een remise
     winner: null,
     lastMove: null,
@@ -144,7 +144,11 @@ function pseudoMoves(state, from) {
       const cc = c + dc
       if (!onBoard(rr, cc)) continue
       const to = rr * 8 + cc
-      if (walls[to]) continue
+      if (walls[to]) {
+        // alleen paarden kunnen een muur breken: ze springen erop en de muur verdwijnt
+        if (piece.t === 'n') add(to, { breakWall: true })
+        continue
+      }
       const target = board[to]
       if (!target) add(to)
       else if (target.c !== me) add(to, { capture: true })
@@ -239,8 +243,13 @@ function rawApply(state, move) {
   if (corners[move.from]) castling[corners[move.from]] = false
   if (corners[move.to]) castling[corners[move.to]] = false
 
-  const halfmove = piece.t === 'p' || capturedPiece ? 0 : state.halfmove + 1
-  return { ...state, board, castling, ep, halfmove, capturedPiece }
+  let walls = state.walls
+  if (move.breakWall) {
+    walls = walls.slice()
+    walls[move.to] = false
+  }
+  const halfmove = piece.t === 'p' || capturedPiece || move.breakWall ? 0 : state.halfmove + 1
+  return { ...state, board, walls, castling, ep, halfmove, capturedPiece }
 }
 
 // Alle legale zetten voor de speler die aan zet is (negeert de muur-fase).
@@ -442,7 +451,23 @@ function canStillMate(state, color) {
 }
 
 export function isDeadPosition(state) {
-  return !canStillMate(state, 'w') && !canStillMate(state, 'b')
+  // Paarden breken muren, en een pion kan nog een paard worden: dan tellen muren niet mee.
+  const canBreak = state.board.some((p) => p && (p.t === 'n' || p.t === 'p'))
+  const s = canBreak ? { ...state, walls: state.walls.map(() => false) } : state
+  return !canStillMate(s, 'w') && !canStillMate(s, 'b')
+}
+
+// Een koning is "ingebouwd" als alle buurvakjes een muur zijn of buiten het bord liggen:
+// hij kan dan nooit meer bewegen. Wie de vijandelijke koning inbouwt, wint.
+export function kingEnclosed(state, color) {
+  const k = findKing(state, color)
+  if (k === -1) return false
+  for (const [dr, dc] of KING) {
+    const r = row(k) + dr
+    const c = col(k) + dc
+    if (onBoard(r, c) && !state.walls[r * 8 + c]) return false
+  }
+  return true
 }
 
 // Wordt na elke beurt aangeroepen: mat, pat, en of een winst nog mogelijk is.
@@ -454,6 +479,13 @@ function evaluate(state, fast = false) {
   const key = positionKey(state)
   const seenCount = (state.history[key] || 0) + 1
   const s = { ...state, history: { ...state.history, [key]: seenCount } }
+
+  const wallW = kingEnclosed(s, 'w')
+  const wallB = kingEnclosed(s, 'b')
+  if (wallW && wallB) return { ...s, status: 'draw', winner: null, reason: 'Beide koningen zijn ingebouwd' }
+  if (wallW || wallB) {
+    return { ...s, status: 'enclosed', winner: wallW ? 'b' : 'w', reason: 'Koning ingebouwd' }
+  }
 
   if (!hasAnyLegalMove(s)) {
     if (inCheck(s, s.turn)) return { ...s, status: 'checkmate', winner: other(s.turn), reason: null }

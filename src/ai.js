@@ -8,6 +8,7 @@ import {
   skipWall,
   inCheck,
   isAttacked,
+  kingEnclosed,
   mobility,
   isFreeSquare,
 } from './chess.js'
@@ -54,6 +55,8 @@ function wallScore(state, sq, ctx, full) {
   walls[sq] = true
   const s = { ...state, walls }
 
+  if (kingEnclosed(s, opp)) return 100000 // vijandelijke koning ingebouwd = gewonnen
+  if (kingEnclosed(s, me)) return -100000 // zelf ingebouwd = verloren
   let score = mobility(s, me) - mobility(s, opp)
   if (wasChecked && !inCheck(s, me)) score += 2000
 
@@ -102,9 +105,21 @@ function actionsFor(state, wallLimit, full = false) {
 }
 
 function scoreMove(state, m) {
-  if (!m.capture) return m.promotion ? 800 : 0
+  if (!m.capture) return m.promotion ? 800 : m.breakWall ? 60 : 0
   const victim = m.enPassant ? VALUE.p : VALUE[state.board[m.to]?.t] || 0
   return 10 * victim - VALUE[state.board[m.from].t] + 1000
+}
+
+// Na een muur: is het spel meteen uitgespeeld doordat een koning is ingebouwd? (score voor `me`, anders null)
+function wallEnd(next, a, me) {
+  if (a.type !== 'wall') return null
+  const opp = other(me)
+  const meIn = kingEnclosed(next, me)
+  const oppIn = kingEnclosed(next, opp)
+  if (meIn && oppIn) return 0
+  if (oppIn) return 100000
+  if (meIn) return -100000
+  return null
 }
 
 function apply(state, a) {
@@ -144,7 +159,10 @@ function search(state, depth, alpha, beta, level) {
   for (const a of acts) {
     const next = apply(state, a)
     let score
-    if (next.turn === state.turn) {
+    const ended = wallEnd(next, a, state.turn)
+    if (ended !== null) {
+      score = ended - (level.depth - depth) // sneller winnen is beter
+    } else if (next.turn === state.turn) {
       // na het plaatsen van een muur is dezelfde speler nog aan zet
       score = search(next, depth, alpha, beta, level)
     } else {
@@ -169,7 +187,10 @@ export function chooseAction(state, levelKey = 'normal') {
   for (const a of acts) {
     const next = apply(state, a)
     let score
-    if (next.turn === state.turn) {
+    const ended = wallEnd(next, a, state.turn)
+    if (ended !== null) {
+      score = ended
+    } else if (next.turn === state.turn) {
       score = search(next, level.depth, -Infinity, Infinity, level)
     } else {
       score = -search(next, level.depth - 1, -Infinity, Infinity, level)
