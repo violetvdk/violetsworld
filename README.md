@@ -1,4 +1,4 @@
-# Muurschaak 🧱
+# Chess
 
 Schaken in React, met een twist: verlies je een stuk, dan mag je een muur plaatsen op een leeg vakje. Op een muur kan niemand staan of doorheen lopen (paarden springen eroverheen).
 

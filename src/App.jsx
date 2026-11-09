@@ -9,11 +9,8 @@ import {
 } from './chess.js'
 import { chooseAction, LEVELS } from './ai.js'
 import { hostGame, joinGame, cleanCode } from './online.js'
+import { Piece, Wall, SketchDefs } from './pieces.jsx'
 
-const GLYPHS = {
-  w: { k: '♔', q: '♕', r: '♖', b: '♗', n: '♘', p: '♙' },
-  b: { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' },
-}
 const NAME = { w: 'Wit', b: 'Zwart' }
 const opposite = (c) => (c === 'w' ? 'b' : 'w')
 
@@ -54,9 +51,16 @@ export default function App() {
   }
 
   if (!session) {
-    return <Menu onStart={start} incomingApi={incomingApi} onLeft={() => setOpponentLeft(true)} />
+    return (
+      <>
+        <SketchDefs />
+        <Menu onStart={start} incomingApi={incomingApi} onLeft={() => setOpponentLeft(true)} />
+      </>
+    )
   }
   return (
+    <>
+    <SketchDefs />
     <Game
       key={session.id}
       {...session}
@@ -64,6 +68,7 @@ export default function App() {
       opponentLeft={opponentLeft}
       onExit={exit}
     />
+    </>
   )
 }
 
@@ -123,14 +128,12 @@ function Menu({ onStart, incomingApi, onLeft }) {
 
   return (
     <div className="app">
-      <h1>🧱 Muurschaak</h1>
-      <p className="subtitle">
-        Schaken, maar verlies je een stuk, dan mag je een muur neerzetten. Op een muur kan niemand staan.
-      </p>
+      <h1 className="title">Chess</h1>
+      <p className="subtitle">Verlies je een stuk? Dan zet je een muur neer.</p>
 
       <div className="menu">
         <section className="card">
-          <h2>🤖 Tegen de computer</h2>
+          <h2>Tegen de computer</h2>
           <div className="row">
             <label>Niveau</label>
             <div className="seg">
@@ -157,7 +160,7 @@ function Menu({ onStart, incomingApi, onLeft }) {
         </section>
 
         <section className="card">
-          <h2>🌍 Online met een code</h2>
+          <h2>Online met een code</h2>
           {lobby?.kind === 'host' && !lobby.error ? (
             <div className="lobby">
               {lobby.code ? (
@@ -194,7 +197,7 @@ function Menu({ onStart, incomingApi, onLeft }) {
         </section>
 
         <section className="card">
-          <h2>👥 Twee spelers</h2>
+          <h2>Twee spelers</h2>
           <p className="muted">Samen op hetzelfde scherm.</p>
           <button onClick={() => onStart({ id: Date.now(), mode: 'local', myColor: 'w' })}>
             Spelen
@@ -321,7 +324,7 @@ function Game({ mode, myColor, level, net, incomingApi, opponentLeft, onExit }) 
 
   return (
     <div className="app">
-      <h1>🧱 Muurschaak</h1>
+      <h1 className="title">Chess</h1>
       <div
         className={`banner ${myWallPhase ? 'banner-wall' : ''} ${
           game.status !== 'playing' ? 'banner-end' : ''
@@ -333,7 +336,7 @@ function Game({ mode, myColor, level, net, incomingApi, opponentLeft, onExit }) 
 
       <Captured color={top} list={game.captured[top]} />
 
-      <div className={`board ${myWallPhase ? 'board-wall' : ''}`}>
+      <div className="boardwrap"><div className={`board ${myWallPhase ? 'board-wall' : ''}`}>
         {order.map((i, vi) => {
           const piece = game.board[i]
           const vr = vi >> 3
@@ -352,13 +355,13 @@ function Game({ mode, myColor, level, net, incomingApi, opponentLeft, onExit }) 
             <div key={i} className={cls} onClick={() => onSquareClick(i)}>
               {vc === 0 && <span className="coord rank">{squareName(i)[1]}</span>}
               {vr === 7 && <span className="coord file">{squareName(i)[0]}</span>}
-              {game.walls[i] && <div className="wall" title={`Muur op ${squareName(i)}`} />}
-              {piece && <span className={`piece ${piece.c}`}>{GLYPHS[piece.c][piece.t]}</span>}
+              {game.walls[i] && <Wall seed={i} />}
+              {piece && <Piece type={piece.t} color={piece.c} seed={i} />}
               {m && <div className={m.capture ? 'hint-capture' : 'hint'} />}
             </div>
           )
         })}
-      </div>
+      </div></div>
 
       <Captured color={bottom} list={game.captured[bottom]} />
 
@@ -379,9 +382,7 @@ function Captured({ color, list }) {
   return (
     <div className="captured">
       {list.map((t, i) => (
-        <span key={i} className={`piece-small ${color}`}>
-          {GLYPHS[color][t]}
-        </span>
+        <Piece key={i} type={t} color={color} seed={i} />
       ))}
       {list.length === 0 && <span className="muted">&nbsp;</span>}
     </div>
