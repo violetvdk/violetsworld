@@ -22,6 +22,10 @@ export function hostGame(h, attempt = 0) {
   let closed = false
 
   peer.on('open', () => h.onCode(code))
+  peer.on('disconnected', () => {
+    // De verbinding met de PeerJS-server viel weg (bijv. tab op de achtergrond): opnieuw koppelen zodat de code geldig blijft.
+    if (!closed && !peer.destroyed) peer.reconnect()
+  })
   peer.on('error', (err) => {
     if (err.type === 'unavailable-id' && attempt < 5) {
       peer.destroy()

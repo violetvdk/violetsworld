@@ -303,6 +303,8 @@ function Game({ mode, myColor, level, net, incomingApi, opponentLeft, onExit }) 
     message = `Schaakmat! ${mode === 'local' ? `${NAME[w]} wint` : me(w) ? 'Jij wint' : `${who(w)} wint`}.`
   } else if (game.status === 'stalemate') {
     message = 'Pat — remise.'
+  } else if (game.status === 'draw') {
+    message = `Remise: ${game.reason.charAt(0).toLowerCase()}${game.reason.slice(1)}.`
   } else if (wallPhase) {
     const c = game.pendingWall
     message = me(c) || mode === 'local'

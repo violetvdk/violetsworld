@@ -23,18 +23,23 @@ export function newGame() {
     board[48 + c] = { t: 'p', c: 'w' }
     board[56 + c] = { t: back[c], c: 'w' }
   }
-  return {
+  const state = {
     board,
     walls: Array(64).fill(false),
     turn: 'w',
     castling: { wK: true, wQ: true, bK: true, bQ: true },
     ep: null, // vakje waar en passant geslagen kan worden
     pendingWall: null, // kleur die nog een muur mag plaatsen
-    status: 'playing', // playing | checkmate | stalemate
+    status: 'playing', // playing | checkmate | stalemate | draw
+    reason: null, // uitleg bij een remise
     winner: null,
     lastMove: null,
+    halfmove: 0, // zetten sinds laatste slag of pionzet (50-zettenregel)
+    history: {}, // stellingen -> aantal keer gezien (herhaling)
     captured: { w: [], b: [] }, // stukken die die kleur verloren heeft
   }
+  state.history = { [positionKey(state)]: 1 }
+  return state
 }
 
 function isFree(state, i) {
@@ -234,7 +239,8 @@ function rawApply(state, move) {
   if (corners[move.from]) castling[corners[move.from]] = false
   if (corners[move.to]) castling[corners[move.to]] = false
 
-  return { ...state, board, castling, ep, capturedPiece }
+  const halfmove = piece.t === 'p' || capturedPiece ? 0 : state.halfmove + 1
+  return { ...state, board, castling, ep, halfmove, capturedPiece }
 }
 
 // Alle legale zetten voor de speler die aan zet is (negeert de muur-fase).
@@ -273,15 +279,192 @@ function hasAnyLegalMove(state) {
   return false
 }
 
-// Bepaalt of het spel afgelopen is (alleen als er geen muur meer te plaatsen valt).
+// ---------------------------------------------------------------- einde van het spel
+
+export function positionKey(state) {
+  const b = state.board.map((p) => (p ? (p.c === 'w' ? p.t.toUpperCase() : p.t) : '.')).join('')
+  const w = state.walls.map((x) => (x ? '#' : '.')).join('')
+  const c = state.castling
+  return `${b}|${w}|${state.turn}|${+c.wK}${+c.wQ}${+c.bK}${+c.bQ}|${state.ep ?? '-'}`
+}
+
+const squareColor = (i) => (row(i) + col(i)) & 1
+
+// Standaard remise door te weinig materiaal.
+function insufficientMaterial(state) {
+  const rest = []
+  for (let i = 0; i < 64; i++) {
+    const p = state.board[i]
+    if (p && p.t !== 'k') rest.push({ ...p, sq: i })
+  }
+  if (rest.length === 0) return true
+  if (rest.length === 1 && (rest[0].t === 'n' || rest[0].t === 'b')) return true
+  // alleen lopers, allemaal op dezelfde kleur vakjes
+  if (rest.every((p) => p.t === 'b')) {
+    const first = squareColor(rest[0].sq)
+    if (rest.every((p) => squareColor(p.sq) === first)) return true
+  }
+  return false
+}
+
+// Vakjes waar een koning ooit kan komen (door muren afgesloten gebied, stukken genegeerd).
+function kingRegion(state, color) {
+  const start = findKing(state, color)
+  const seen = new Set()
+  if (start === -1) return seen
+  const queue = [start]
+  seen.add(start)
+  while (queue.length) {
+    const sq = queue.pop()
+    for (const [dr, dc] of KING) {
+      const r = row(sq) + dr
+      const c = col(sq) + dc
+      if (!onBoard(r, c)) continue
+      const to = r * 8 + c
+      if (state.walls[to] || seen.has(to)) continue
+      seen.add(to)
+      queue.push(to)
+    }
+  }
+  return seen
+}
+
+// Alle vakjes waar een stuk ooit zou kunnen komen als alleen de muren in de weg staan (optimistisch).
+function reachFrom(state, starts, type) {
+  const seen = new Set(starts)
+  const queue = [...starts]
+  while (queue.length) {
+    const sq = queue.pop()
+    const r = row(sq)
+    const c = col(sq)
+    const push = (to) => {
+      if (!seen.has(to)) {
+        seen.add(to)
+        queue.push(to)
+      }
+    }
+    if (type === 'n') {
+      for (const [dr, dc] of KNIGHT) {
+        if (onBoard(r + dr, c + dc) && !state.walls[(r + dr) * 8 + c + dc]) push((r + dr) * 8 + c + dc)
+      }
+    } else {
+      const dirs = type === 'b' ? DIAG : type === 'r' ? ORTHO : [...DIAG, ...ORTHO]
+      for (const [dr, dc] of dirs) {
+        let rr = r + dr
+        let cc = c + dc
+        while (onBoard(rr, cc) && !state.walls[rr * 8 + cc]) {
+          push(rr * 8 + cc)
+          rr += dr
+          cc += dc
+        }
+      }
+    }
+  }
+  return seen
+}
+
+// Vanaf welke vakjes in `from` wordt minstens één vakje van `targets` aangevallen?
+function attacksAny(state, from, type, targets, color) {
+  for (const sq of from) {
+    const r = row(sq)
+    const c = col(sq)
+    if (type === 'n') {
+      for (const [dr, dc] of KNIGHT) {
+        if (onBoard(r + dr, c + dc) && targets.has((r + dr) * 8 + c + dc)) return true
+      }
+    } else if (type === 'p') {
+      const dr = color === 'w' ? -1 : 1
+      for (const dc of [-1, 1]) {
+        if (onBoard(r + dr, c + dc) && targets.has((r + dr) * 8 + c + dc)) return true
+      }
+    } else {
+      const dirs = type === 'b' ? DIAG : type === 'r' ? ORTHO : [...DIAG, ...ORTHO]
+      for (const [dr, dc] of dirs) {
+        let rr = r + dr
+        let cc = c + dc
+        while (onBoard(rr, cc) && !state.walls[rr * 8 + cc]) {
+          if (targets.has(rr * 8 + cc)) return true
+          rr += dr
+          cc += dc
+        }
+      }
+    }
+  }
+  return false
+}
+
+// Kan `color` de vijandelijke koning nog ooit schaak zetten (en dus mat)? Optimistisch:
+// zegt alleen "nee" als het ook zonder tegenstander in de weg onmogelijk is.
+function canStillMate(state, color) {
+  const targets = kingRegion(state, other(color))
+  if (targets.size === 0) return false
+  const lastRow = color === 'w' ? 0 : 7
+  for (let i = 0; i < 64; i++) {
+    const p = state.board[i]
+    if (!p || p.c !== color || p.t === 'k') continue
+    if (p.t === 'p') {
+      // pion loopt vooruit/slaat schuin; bij promotie komt er een dame of paard
+      const dir = color === 'w' ? -1 : 1
+      const seen = new Set([i])
+      const queue = [i]
+      const promoted = new Set()
+      while (queue.length) {
+        const sq = queue.pop()
+        const r = row(sq)
+        const c = col(sq)
+        if (r === lastRow) {
+          promoted.add(sq)
+          continue
+        }
+        for (const dc of [-1, 0, 1]) {
+          const rr = r + dir
+          const cc = c + dc
+          if (!onBoard(rr, cc)) continue
+          const to = rr * 8 + cc
+          if (state.walls[to] || seen.has(to)) continue
+          seen.add(to)
+          queue.push(to)
+        }
+      }
+      if (attacksAny(state, seen, 'p', targets, color)) return true
+      if (promoted.size) {
+        const q = reachFrom(state, [...promoted], 'q')
+        const n = reachFrom(state, [...promoted], 'n')
+        if (attacksAny(state, q, 'q', targets, color)) return true
+        if (attacksAny(state, n, 'n', targets, color)) return true
+      }
+    } else {
+      const reach = reachFrom(state, [i], p.t)
+      if (attacksAny(state, reach, p.t, targets, color)) return true
+    }
+  }
+  return false
+}
+
+export function isDeadPosition(state) {
+  return !canStillMate(state, 'w') && !canStillMate(state, 'b')
+}
+
+// Wordt na elke beurt aangeroepen: mat, pat, en of een winst nog mogelijk is.
 function evaluate(state, fast = false) {
   if (fast) return state
-  if (state.pendingWall) return { ...state, status: 'playing', winner: null }
-  if (hasAnyLegalMove(state)) return { ...state, status: 'playing', winner: null }
-  if (inCheck(state, state.turn)) {
-    return { ...state, status: 'checkmate', winner: other(state.turn) }
+  // Zolang er nog een muur geplaatst mag worden is het spel niet afgelopen (een muur kan een schaak blokkeren).
+  if (state.pendingWall) return { ...state, status: 'playing', winner: null, reason: null }
+
+  const key = positionKey(state)
+  const seenCount = (state.history[key] || 0) + 1
+  const s = { ...state, history: { ...state.history, [key]: seenCount } }
+
+  if (!hasAnyLegalMove(s)) {
+    if (inCheck(s, s.turn)) return { ...s, status: 'checkmate', winner: other(s.turn), reason: null }
+    return { ...s, status: 'stalemate', winner: null, reason: 'Pat' }
   }
-  return { ...state, status: 'stalemate', winner: null }
+  const draw = (reason) => ({ ...s, status: 'draw', winner: null, reason })
+  if (insufficientMaterial(s)) return draw('Onvoldoende materiaal om mat te zetten')
+  if (isDeadPosition(s)) return draw('Niemand kan nog mat zetten (door de muren)')
+  if (s.halfmove >= 100) return draw('50 zetten zonder slag of pionzet')
+  if (seenCount >= 3) return draw('Dezelfde stelling voor de derde keer')
+  return { ...s, status: 'playing', winner: null, reason: null }
 }
 
 export function makeMove(state, move, fast = false) {
